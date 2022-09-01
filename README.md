@@ -1,3 +1,5 @@
+This repo has been forked from the official implementation of "Framework for Analysis of Class-Incremental Learning", found here: https://github.com/mmasana/FACIL. This repo is for use as a submodule for the Lifelong Action Learning project (https://github.com/hwalli92/LAL-4-SARs)
+
 <div align="center">
 <img src="./docs/_static/facil_logo.png" width="100px">
 

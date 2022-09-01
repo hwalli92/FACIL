@@ -105,7 +105,7 @@ class Appr(Inc_Learning_Appr):
         for p in parameters:
             p.grad.add_(torch.randn(p.grad.shape, device=p.grad.device) * variance)
 
-    def train_loop(self, t, trn_loader, val_loader):
+    def train_loop(self, t, trn_loader, val_loader, train_task):
         """Contains the epochs loop"""
         if t == 0:  # First task is simple training
             super().train_loop(t, trn_loader, val_loader)

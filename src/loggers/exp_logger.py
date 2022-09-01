@@ -27,7 +27,7 @@ class ExperimentLogger:
     def log_figure(self, name, iter, figure, curtime=None):
         pass
 
-    def save_model(self, state_dict, task):
+    def save_model(self, state_dict, task, bias_layers=None):
         pass
 
 
@@ -69,7 +69,7 @@ class MultiLogger(ExperimentLogger):
         for l in self.loggers:
             l.log_figure(name, iter, figure, curtime)
 
-    def save_model(self, state_dict, task):
+    def save_model(self, state_dict, task, bias_layers=None):
         if self.save_models:
             for l in self.loggers:
-                l.save_model(state_dict, task)
+                l.save_model(state_dict, task, bias_layers)

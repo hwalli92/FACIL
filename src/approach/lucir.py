@@ -116,7 +116,7 @@ class Appr(Inc_Learning_Appr):
         # However, this is not mentioned in the paper and doesn't seem to make a significant difference.
         super().pre_train_process(t, trn_loader)
 
-    def train_loop(self, t, trn_loader, val_loader):
+    def train_loop(self, t, trn_loader, val_loader, train_task):
         """Contains the epochs loop"""
 
         # add exemplars to train_loader
@@ -128,7 +128,8 @@ class Appr(Inc_Learning_Appr):
                                                      pin_memory=trn_loader.pin_memory)
 
         # FINETUNING TRAINING -- contains the epochs loop
-        super().train_loop(t, trn_loader, val_loader)
+        if train_task:
+            super().train_loop(t, trn_loader, val_loader)
 
         # EXEMPLAR MANAGEMENT -- select training subset
         self.exemplars_dataset.collect_exemplars(self.model, trn_loader, val_loader.dataset.transform)

@@ -72,12 +72,13 @@ class Appr(Inc_Learning_Appr):
             bic_outputs.append(self.bias_layers[m](outputs[m]))
         return bic_outputs
 
-    def train_loop(self, t, trn_loader, val_loader):
+    def train_loop(self, t, trn_loader, val_loader, train_task):
         """Contains the epochs loop
         Some parts could go into self.pre_train_process() or self.post_train_process(), but we leave it for readability
         """
         # add a bias layer for the new classes
-        self.bias_layers.append(BiasLayer().to(self.device))
+        if train_task:
+            self.bias_layers.append(BiasLayer().to(self.device))
 
         # STAGE 0: EXEMPLAR MANAGEMENT -- select subset of validation to use in Stage 2 -- val_old, val_new (Fig.2)
         print('Stage 0: Select exemplars from validation')
@@ -85,7 +86,7 @@ class Appr(Inc_Learning_Appr):
 
         # number of classes and proto samples per class
         num_cls = sum(self.model.task_cls)
-        num_old_cls = sum(self.model.task_cls[:t])
+        num_old_cls = sum(self.model_old.task_cls[:t]) if t > 0 else sum(self.model.task_cls[:t])
         if self.exemplars_dataset.max_num_exemplars != 0:
             num_exemplars_per_class = int(np.floor(self.num_exemplars / num_cls))
             num_val_ex_cls = int(np.ceil(self.val_percentage * num_exemplars_per_class))
@@ -118,11 +119,11 @@ class Appr(Inc_Learning_Appr):
             assert (len(cls_ind) > 0), "No samples to choose from for class {:d}".format(curr_cls)
             assert (num_val_ex_cls <= len(cls_ind)), "Not enough samples to store for class {:d}".format(curr_cls)
             # add samples to the exemplar list
-            self.x_valid_exemplars[curr_cls] = [trn_loader.dataset.images[idx] for idx in cls_ind[:num_val_ex_cls]]
+            self.x_valid_exemplars[curr_cls] = [trn_loader.dataset.data[idx] for idx in cls_ind[:num_val_ex_cls]]
             self.y_valid_exemplars[curr_cls] = [trn_loader.dataset.labels[idx] for idx in cls_ind[:num_val_ex_cls]]
             non_selected.extend(cls_ind[num_val_ex_cls:])
         # remove selected samples from the validation data used during training
-        trn_loader.dataset.images = [trn_loader.dataset.images[idx] for idx in non_selected]
+        trn_loader.dataset.data = [trn_loader.dataset.data[idx] for idx in non_selected]
         trn_loader.dataset.labels = [trn_loader.dataset.labels[idx] for idx in non_selected]
         clock1 = time.time()
         print(' > Selected {:d} validation exemplars, time={:5.1f}s'.format(
@@ -139,71 +140,73 @@ class Appr(Inc_Learning_Appr):
                                                      pin_memory=trn_loader.pin_memory)
 
         # STAGE 1: DISTILLATION
-        print('Stage 1: Training model with distillation')
-        super().train_loop(t, trn_loader, val_loader)
+        if train_task:
+            print('Stage 1: Training model with distillation')
+            super().train_loop(t, trn_loader, val_loader)
         # From LwF: Restore best and save model for future tasks
         self.model_old = deepcopy(self.model)
         self.model_old.eval()
         self.model_old.freeze_all()
 
         # STAGE 2: BIAS CORRECTION
-        if t > 0:
-            print('Stage 2: Training bias correction layers')
+        if train_task:
+            if t > 0:
+                print('Stage 2: Training bias correction layers')
             # Fill bic_val_loader with validation protoset
-            if isinstance(bic_val_dataset.images, list):
-                bic_val_dataset.images = sum(self.x_valid_exemplars, [])
-            else:
-                bic_val_dataset.images = np.vstack(self.x_valid_exemplars)
-            bic_val_dataset.labels = sum(self.y_valid_exemplars, [])
-            bic_val_loader = DataLoader(bic_val_dataset, batch_size=trn_loader.batch_size, shuffle=True,
-                                        num_workers=trn_loader.num_workers, pin_memory=trn_loader.pin_memory)
+                if isinstance(bic_val_dataset.data, list):
+                    bic_val_dataset.data = sum(self.x_valid_exemplars, [])
+                else:
+                    bic_val_dataset.data = np.vstack(self.x_valid_exemplars)
+                bic_val_dataset.labels = sum(self.y_valid_exemplars, [])
+                bic_val_loader = DataLoader(bic_val_dataset, batch_size=trn_loader.batch_size, shuffle=True,
+                                            num_workers=trn_loader.num_workers, pin_memory=trn_loader.pin_memory)
 
             # bias optimization on validation
-            self.model.eval()
+                self.model.eval()
             # Allow to learn the alpha and beta for the current task
-            self.bias_layers[t].alpha.requires_grad = True
-            self.bias_layers[t].beta.requires_grad = True
+                self.bias_layers[t].alpha.requires_grad = True
+                self.bias_layers[t].beta.requires_grad = True
 
             # In their code is specified that momentum is always 0.9
-            bic_optimizer = torch.optim.SGD(self.bias_layers[t].parameters(), lr=self.lr, momentum=0.9)
+                bic_optimizer = torch.optim.SGD(self.bias_layers[t].parameters(), lr=self.lr, momentum=0.9)
             # Loop epochs
-            for e in range(self.bias_epochs):
+                for e in range(self.bias_epochs):
                 # Train bias correction layers
-                clock0 = time.time()
-                total_loss, total_acc = 0, 0
-                for inputs, targets in bic_val_loader:
+                    clock0 = time.time()
+                    total_loss, total_acc = 0, 0
+                    for inputs, targets in bic_val_loader:
                     # Forward current model
-                    with torch.no_grad():
-                        outputs = self.model(inputs.to(self.device))
-                        old_cls_outs = self.bias_forward(outputs[:t])
-                    new_cls_outs = self.bias_layers[t](outputs[t])
-                    pred_all_classes = torch.cat([torch.cat(old_cls_outs, dim=1), new_cls_outs], dim=1)
+                        with torch.no_grad():
+                            outputs = self.model(inputs.to(self.device))
+                            old_cls_outs = self.bias_forward(outputs[:t])
+                        new_cls_outs = self.bias_layers[t](outputs[t])
+                        pred_all_classes = torch.cat([torch.cat(old_cls_outs, dim=1), new_cls_outs], dim=1)
                     # Eqs. 4-5: outputs from previous tasks are not modified (any alpha or beta from those is fixed),
                     #           only alpha and beta from the new task is learned. No temperature scaling used.
-                    loss = torch.nn.functional.cross_entropy(pred_all_classes, targets.to(self.device))
+                        loss = torch.nn.functional.cross_entropy(pred_all_classes, targets.to(self.device))
                     # However, in their code, they apply a 0.1 * L2-loss to the gamma variable (beta in the paper)
-                    loss += 0.1 * ((self.bias_layers[t].beta[0] ** 2) / 2)
+                        loss += 0.1 * ((self.bias_layers[t].beta[0] ** 2) / 2)
                     # Log
-                    total_loss += loss.item() * len(targets)
-                    total_acc += ((pred_all_classes.argmax(1) == targets.to(self.device)).float()).sum().item()
+                        total_loss += loss.item() * len(targets)
+                        total_acc += ((pred_all_classes.argmax(1) == targets.to(self.device)).float()).sum().item()
                     # Backward
-                    bic_optimizer.zero_grad()
-                    loss.backward()
-                    bic_optimizer.step()
-                clock1 = time.time()
+                        bic_optimizer.zero_grad()
+                        loss.backward()
+                        bic_optimizer.step()
+                    clock1 = time.time()
                 # reducing the amount of verbose
-                if (e + 1) % (self.bias_epochs / 4) == 0:
-                    print('| Epoch {:3d}, time={:5.1f}s | Train: loss={:.3f}, TAg acc={:5.1f}% |'.format(
-                          e + 1, clock1 - clock0, total_loss / len(bic_val_loader.dataset.labels),
-                          100 * total_acc / len(bic_val_loader.dataset.labels)))
+                    if (e + 1) % (self.bias_epochs / 4) == 0:
+                        print('| Epoch {:3d}, time={:5.1f}s | Train: loss={:.3f}, TAg acc={:5.1f}% |'.format(
+                              e + 1, clock1 - clock0, total_loss / len(bic_val_loader.dataset.labels),
+                              100 * total_acc / len(bic_val_loader.dataset.labels)))
             # Fix alpha and beta after learning them
-            self.bias_layers[t].alpha.requires_grad = False
-            self.bias_layers[t].beta.requires_grad = False
+                self.bias_layers[t].alpha.requires_grad = False
+                self.bias_layers[t].beta.requires_grad = False
 
         # Print all alpha and beta values
-        for task in range(t + 1):
-            print('Stage 2: BiC training for Task {:d}: alpha={:.5f}, beta={:.5f}'.format(task,
-                  self.bias_layers[task].alpha.item(), self.bias_layers[task].beta.item()))
+            for task in range(t + 1):
+                print('Stage 2: BiC training for Task {:d}: alpha={:.5f}, beta={:.5f}'.format(task,
+                      self.bias_layers[task].alpha.item(), self.bias_layers[task].beta.item()))
 
         # STAGE 3: EXEMPLAR MANAGEMENT
         self.exemplars_dataset.collect_exemplars(self.model, trn_loader, val_loader.dataset.transform)

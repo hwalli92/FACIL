@@ -50,10 +50,10 @@ class Inc_Learning_Appr:
         """Returns the optimizer"""
         return torch.optim.SGD(self.model.parameters(), lr=self.lr, weight_decay=self.wd, momentum=self.momentum)
 
-    def train(self, t, trn_loader, val_loader):
+    def train(self, t, trn_loader, val_loader, train_task):
         """Main train structure"""
         self.pre_train_process(t, trn_loader)
-        self.train_loop(t, trn_loader, val_loader)
+        self.train_loop(t, trn_loader, val_loader, train_task)
         self.post_train_process(t, trn_loader)
 
     def pre_train_process(self, t, trn_loader):

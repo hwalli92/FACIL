@@ -52,8 +52,8 @@ class Logger(ExperimentLogger):
         figure.savefig(os.path.join(self.exp_path, 'figures',
                                     '{}_{}-{}.pdf'.format(name, iter, curtime.strftime("%Y-%m-%d-%H-%M-%S"))))
 
-    def save_model(self, state_dict, task):
-        torch.save(state_dict, os.path.join(self.exp_path, "models", "task{}.ckpt".format(task)))
+    def save_model(self, state_dict, task, bias_layers=None):
+        torch.save({'model': state_dict, 'bias_layers': bias_layers}, os.path.join(self.exp_path, "models", "task{}.ckpt".format(task)))
 
     def __del__(self):
         self.raw_log_file.close()

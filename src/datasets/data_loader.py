@@ -8,10 +8,10 @@ from torchvision.datasets import SVHN as TorchVisionSVHN
 
 from . import base_dataset as basedat
 from . import memory_dataset as memd
+from . import ntu_dataset as ntud
 from .dataset_config import dataset_config
 
-
-def get_loaders(datasets, num_tasks, nc_first_task, batch_size, num_workers, pin_memory, validation=.1):
+def get_loaders(datasets, num_tasks, nc_first_task, batch_size, num_workers, pin_memory, validation=.1, skip_tasks=None, cpertask=None, train_args=None, test_args=None):
     """Apply transformations to Datasets and create the DataLoaders for each task"""
 
     trn_load, val_load, tst_load = [], [], []
@@ -34,7 +34,11 @@ def get_loaders(datasets, num_tasks, nc_first_task, batch_size, num_workers, pin
                                                                 validation=validation,
                                                                 trn_transform=trn_transform,
                                                                 tst_transform=tst_transform,
-                                                                class_order=dc['class_order'])
+                                                                skip_tasks=skip_tasks,
+                                                                class_order=dc['class_order'],
+                                                                cpertask=cpertask,
+                                                                train_args=train_args,
+                                                                test_args=test_args)
 
         # apply offsets in case of multiple datasets
         if idx_dataset > 0:
@@ -45,7 +49,7 @@ def get_loaders(datasets, num_tasks, nc_first_task, batch_size, num_workers, pin
         dataset_offset = dataset_offset + sum([tc[1] for tc in curtaskcla])
 
         # reassign class idx for multiple dataset case
-        curtaskcla = [(tc[0] + idx_dataset * num_tasks, tc[1]) for tc in curtaskcla]
+        curtaskcla = [(tc[0] + idx_dataset * num_tasks, tc[1], tc[2]) for tc in curtaskcla]
 
         # extend final taskcla list
         taskcla.extend(curtaskcla)
@@ -61,7 +65,7 @@ def get_loaders(datasets, num_tasks, nc_first_task, batch_size, num_workers, pin
     return trn_load, val_load, tst_load, taskcla
 
 
-def get_datasets(dataset, path, num_tasks, nc_first_task, validation, trn_transform, tst_transform, class_order=None):
+def get_datasets(dataset, path, num_tasks, nc_first_task, validation, trn_transform, tst_transform, skip_tasks=None, class_order=None, cpertask=None, train_args=None, test_args=None):
     """Extract datasets and create Dataset class"""
 
     trn_dset, val_dset, tst_dset = [], [], []
@@ -134,6 +138,28 @@ def get_datasets(dataset, path, num_tasks, nc_first_task, validation, trn_transf
         # set dataset type
         Dataset = memd.MemoryDataset
 
+    elif dataset == 'ntu':
+        npz_data = np.load(path)
+        for phase in ['train', 'test']:
+            x = npz_data['x_' + phase]
+            y = np.where(npz_data['y_' + phase] > 0)[1]
+            N, T, J = x.shape
+            J = int(J/6)
+            x = x.reshape((N, T, 2, J, 3)).transpose(0, 4, 1, 3, 2)
+
+            if phase == 'train':
+               trn_data = {'x': x, 'y': y}
+            else:
+               tst_data = {'x': x, 'y': y}
+
+        # compute splits
+        all_data, taskcla, class_indices = ntud.get_data(trn_data, tst_data, validation=validation,
+                                                         num_tasks=num_tasks, nc_first_task=nc_first_task,
+                                                         shuffle_classes=class_order is None, skip_tasks=skip_tasks, class_order=class_order,
+                                                         cpertask=cpertask)
+        # set dataset type
+        Dataset = ntud.NTUDataset
+
     else:
         # read data paths and compute splits -- path needs to have a train.txt and a test.txt with image-label pairs
         all_data, taskcla, class_indices = basedat.get_data(path, num_tasks=num_tasks, nc_first_task=nc_first_task,
@@ -148,9 +174,14 @@ def get_datasets(dataset, path, num_tasks, nc_first_task, validation, trn_transf
         all_data[task]['trn']['y'] = [label + offset for label in all_data[task]['trn']['y']]
         all_data[task]['val']['y'] = [label + offset for label in all_data[task]['val']['y']]
         all_data[task]['tst']['y'] = [label + offset for label in all_data[task]['tst']['y']]
-        trn_dset.append(Dataset(all_data[task]['trn'], trn_transform, class_indices))
-        val_dset.append(Dataset(all_data[task]['val'], tst_transform, class_indices))
-        tst_dset.append(Dataset(all_data[task]['tst'], tst_transform, class_indices))
+        if dataset == 'ntu':
+            trn_dset.append(Dataset(all_data[task]['trn'], trn_transform, class_indices, **train_args))
+            val_dset.append(Dataset(all_data[task]['val'], tst_transform, class_indices, **test_args))
+            tst_dset.append(Dataset(all_data[task]['tst'], tst_transform, class_indices, **test_args))
+        else:
+            trn_dset.append(Dataset(all_data[task]['trn'], trn_transform, class_indices))
+            val_dset.append(Dataset(all_data[task]['val'], tst_transform, class_indices))
+            tst_dset.append(Dataset(all_data[task]['tst'], tst_transform, class_indices))
         offset += taskcla[task][1]
 
     return trn_dset, val_dset, tst_dset, taskcla

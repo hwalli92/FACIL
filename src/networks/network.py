@@ -46,6 +46,15 @@ class LLL_Net(nn.Module):
         self.task_cls = torch.tensor([head.out_features for head in self.heads])
         self.task_offset = torch.cat([torch.LongTensor(1).zero_(), self.task_cls.cumsum(0)[:-1]])
 
+    def modify_head(self, head_idx, num_outputs):
+        """Update head with the new number of outputs. Also update the number of classes per task and the
+        corresponding offsets
+        """
+        self.heads[head_idx] = nn.Linear(self.out_size, num_outputs)
+        # we re-compute instead of append in case an approach makes changes to the heads
+        self.task_cls = torch.tensor([head.out_features for head in self.heads])
+        self.task_offset = torch.cat([torch.LongTensor(1).zero_(), self.task_cls.cumsum(0)[:-1]])
+
     def forward(self, x, return_features=False):
         """Applies the forward pass
 

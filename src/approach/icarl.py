@@ -96,7 +96,7 @@ class Appr(Inc_Learning_Appr):
                 self.exemplar_means.append(cls_feats_mean)
 
     # Algorithm 2: iCaRL Incremental Train
-    def train_loop(self, t, trn_loader, val_loader):
+    def train_loop(self, t, trn_loader, val_loader, train_task):
         """Contains the epochs loop"""
 
         # remove mean of exemplars during training since Alg. 1 is not used during Alg. 2
@@ -112,7 +112,8 @@ class Appr(Inc_Learning_Appr):
                                                      pin_memory=trn_loader.pin_memory)
 
         # FINETUNING TRAINING -- contains the epochs loop
-        super().train_loop(t, trn_loader, val_loader)
+        if train_task:
+            super().train_loop(t, trn_loader, val_loader)
 
         # EXEMPLAR MANAGEMENT -- select training subset
         # Algorithm 4: iCaRL ConstructExemplarSet and Algorithm 5: iCaRL ReduceExemplarSet

@@ -68,7 +68,7 @@ class Appr(Inc_Learning_Appr):
             self.init_classes_means[cls] /= classes_counts[cls]
         self.models_confidence[t] /= models_counts
 
-    def train_loop(self, t, trn_loader, val_loader):
+    def train_loop(self, t, trn_loader, val_loader, train_task):
         """Contains the epochs loop"""
 
         # add exemplars to train_loader

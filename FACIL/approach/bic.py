@@ -78,7 +78,7 @@ class Appr(Inc_Learning_Appr):
         """
         # add a bias layer for the new classes
         if train_task:
-            self.bias_layers.append(BiasLayer().to(self.device))
+            self.bias_layers.append(BiasLayer(self.device).to(self.device))
 
         # STAGE 0: EXEMPLAR MANAGEMENT -- select subset of validation to use in Stage 2 -- val_old, val_new (Fig.2)
         print('Stage 0: Select exemplars from validation')

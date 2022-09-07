@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 from datetime import datetime
 
-from loggers.exp_logger import ExperimentLogger
+from FACIL.loggers.exp_logger import ExperimentLogger
 
 
 class Logger(ExperimentLogger):

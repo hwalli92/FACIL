@@ -55,7 +55,9 @@ class Logger(ExperimentLogger):
 
     def save_model(self, state_dict, task, exemplars, bias_layers=None):
         torch.save({'model': state_dict, 'bias_layers': bias_layers}, os.path.join(self.exp_path, "models", "task{}.ckpt".format(task)))
-        np.savez(os.path.join(self.exp_path, "models", "exemplars_task{}.npz".format(task)), x_trn_exm=exemplars[0][0], y_trn_exm=exemplars[0][1], x_val_exm=exemplars[1][0], y_val_exm=exemplars[1][1])
+        with open(os.path.join(self.exp_path, "models", "exemplars_task{}.pkl".format(task)), 'wb') as outp:
+            pickle.dump(exemplars, outp, pickle.HIGHEST_PROTOCOL)
+#        np.savez(os.path.join(self.exp_path, "models", "exemplars_task{}.npz".format(task)), x_trn_exm=exemplars[0][0], y_trn_exm=exemplars[0][1], x_val_exm=exemplars[1][0], y_val_exm=exemplars[1][1])
 
     def __del__(self):
         self.raw_log_file.close()

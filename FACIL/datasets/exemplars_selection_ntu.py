@@ -8,8 +8,8 @@ import torch
 from torch.utils.data import DataLoader, ConcatDataset
 from torchvision.transforms import Lambda
 
-from datasets.exemplars_dataset_ntu import ExemplarsDataset
-from networks.network import LLL_Net
+from FACIL.datasets.exemplars_dataset_ntu import ExemplarsDataset
+from FACIL.networks.network import LLL_Net
 
 
 class ExemplarsSelector:
